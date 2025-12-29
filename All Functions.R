@@ -1,6 +1,5 @@
-#------------------------........ Important Functions........----------------------------
 #--------------------------------------------------------------------------------------------------------
-#                    (1) MADD_knn classifier (supports prototype based method)
+#                    (1) MADD_knn classifier (supports prototype-based method)
 #--------------------------------------------------------------------------------------------------------
 
 predict_madd_knn <- function(trainX, trainY,
@@ -594,5 +593,6 @@ cross_validation <- function(trainX, trainY, Dtrain, k_choices,
   rownames(out) <- NULL
   out
 }
+
 
 #----------------------------------------------- x x x x x--------------------------------------------------------------
