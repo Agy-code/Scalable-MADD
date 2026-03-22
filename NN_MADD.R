@@ -1,26 +1,28 @@
 # -------------------------------------------------------------------------
-# Scalable MADD nearest-neighbor classifier
+# Nearest Neighbor Classifier with MADD
+# -------------------------------------------------------------------------
 #
-# This function implements the classification rule described in the paper:
+# This function implements NN_MADD and NN_MADD_sc classification:
 #   1. Compute rho_sc(z, x_i) for every training observation x_i
 #      using a representative set X* (called ref.points here).
+#      If, X* is the entire training set, then perform NN_MADD.
 #   2. For each class j, compute the minimum rho_sc(z, x_i)
 #      over all training points belonging to class j.
 #   3. Assign z to the class with the smallest classwise minimum.
-#
-# Important:
-# - If ref.points is NULL, the full training set is used as the reference set.
-# - memory.eff = "YES" avoids storing the full n x n training distance matrix.
-# - memory.eff = "NO" uses a precomputed or newly computed full distance matrix
-#   when ref.points is NULL.
+#   
+#Note: 1. It can perform in memory efficient or computing effeiceint manner for NN_MADD classification . 
+# - memory.eff = "YES" avoids storing the full n x n training Euclidean distance matrix.
+# - memory.eff = "NO" uses a precomputed or newly computed full Euclidean distance matrix.
+#      2. print.MADD = TRUE gives the MADD matrix used in classification. The default is FALSE.
+
 # -------------------------------------------------------------------------
 
 nn_madd <- function(trainX, trainY,
-                             testX, testY = NULL,
-                             Dtrain = NULL,
-                             ref.points = NULL,
-                             memory.eff = c("NO", "YES"),
-                             print.MADD = FALSE) {
+                    testX, testY = NULL,
+                    Dtrain = NULL,
+                    ref.points = NULL,
+                    memory.eff = c("NO", "YES"),
+                    print.MADD = FALSE) {
 
   memory.eff <- match.arg(memory.eff)
 
@@ -36,19 +38,12 @@ nn_madd <- function(trainX, trainY,
   m <- nrow(testX)
   d <- ncol(trainX)
 
-  if (ncol(testX) != d) {
-    stop("trainX and testX must have the same number of columns.")
-  }
-
-  if (length(trainY) != n) {
-    stop("Length of trainY must match the number of rows in trainX.")
-  }
 
   class.labels <- unique(trainY)
   have_test_labels <- !is.null(testY)
 
   # -----------------------------------------------------------------------
-  # Helper: Euclidean distances from every row of A to a single vector x
+  # Euclidean distances from every row of A to a single vector x
   # -----------------------------------------------------------------------
   distance_to_point <- function(A, x) {
     sqrt(rowSums((A - matrix(x, nrow = nrow(A), ncol = ncol(A), byrow = TRUE))^2))
@@ -63,15 +58,11 @@ nn_madd <- function(trainX, trainY,
 
     if (memory.eff == "NO") {
 
-      # Use the supplied full distance matrix if available; otherwise compute it.
+      # Use the given full distance matrix if available; otherwise compute it.
       if (is.null(Dtrain)) {
         Dtrain <- as.matrix(Rfast::Dist(trainX))
       } else {
         Dtrain <- as.matrix(Dtrain)
-      }
-
-      if (!all(dim(Dtrain) == c(n, n))) {
-        stop("Dtrain must be an n x n distance matrix.")
       }
 
       if (print.MADD) {
@@ -92,8 +83,7 @@ nn_madd <- function(trainX, trainY,
         diff_mat <- abs(sweep(Dtrain, 2, d_z, "-"))
         madd_row <- (rowSums(diff_mat) - diag(diff_mat)) / (n - 1)
 
-        # Paper's rule:
-        # For each class, take the minimum MADD to that class.
+        # NN-classification:
         classwise_min <- sapply(class.labels, function(cl) {
           min(madd_row[trainY == cl])
         })
@@ -107,8 +97,9 @@ nn_madd <- function(trainX, trainY,
 
     } else if (memory.eff == "YES") {
 
-      # Memory-efficient branch:
-      # avoid storing the full n x n training distance matrix
+      # Memory-efficient branch:avoid storing the
+      # full n x n training distance matrix.
+
       if (print.MADD) {
         MADD_mat <- matrix(0, nrow = m, ncol = n)
       }
@@ -141,15 +132,11 @@ nn_madd <- function(trainX, trainY,
   # -----------------------------------------------------------------------
   # Case 2: Reference points supplied
   # Then X* is the representative set indexed by ref.points.
-  # This is the scalable MADD used in the paper.
+  # This is the scalable version of MADD.
   # -----------------------------------------------------------------------
   } else {
 
     ref.points <- as.integer(ref.points)
-
-    if (any(is.na(ref.points)) || any(ref.points < 1L) || any(ref.points > n)) {
-      stop("ref.points must contain valid row indices of trainX.")
-    }
 
     ref.points <- unique(ref.points)
     P <- length(ref.points)
@@ -162,14 +149,10 @@ nn_madd <- function(trainX, trainY,
 
     # Distances from every training point to every reference point.
     # If Dtrain is available, we reuse it; otherwise we compute only the
-    # n x P block that we actually need.
+    # n x P block that we need here.
+ 
     if (!is.null(Dtrain)) {
       Dtrain <- as.matrix(Dtrain)
-
-      if (!all(dim(Dtrain) == c(n, n))) {
-        stop("Dtrain must be an n x n distance matrix.")
-      }
-
       D_tr_ref <- Dtrain[, ref.points, drop = FALSE]
     } else {
       D_tr_ref <- matrix(0, nrow = n, ncol = P)
@@ -178,7 +161,7 @@ nn_madd <- function(trainX, trainY,
       }
     }
 
-    # Identify which training observations are themselves in the reference set.
+    # Identify the training observations contained in the reference set.
     ref.position <- match(seq_len(n), ref.points, nomatch = 0L)
     is.reference <- ref.position > 0L
 
@@ -236,12 +219,12 @@ nn_madd <- function(trainX, trainY,
     acc  <- sum(diag(conf)) / sum(conf)
   }
 
-  out <- list(
+  output <- list(
     MADD = if (print.MADD) MADD_mat else NULL,
     prediction = preds,
     conf.matrix = conf,
     accuracy = acc
   )
 
-  return(out)
+  return(output)
 }
