@@ -1,0 +1,217 @@
+
+
+# -------------------------------------------------------------------------
+# Sampling from DPP
+# -------------------------------------------------------------------------
+#
+# This function supports:
+#
+#   1. "standard"      : samples from a naive DPP
+#   2. "kDPP"          : samples exactly k items from a k-DPP
+#   3. "deterministic" : selects k items using a deterministic 
+#                        method, it maintains the descending order of
+#                        diversity among the sleected points.
+#
+#
+# Input: 1. eigendecomposition of L-matrix
+#  - eigendecomposition$values   : eigenvalues
+#  - eigendecomposition$vectors  : corresponding eigenvectors
+#        2. Method of DPP 
+#        3. Number of points to be selected = k.
+#
+# Output:
+#   A vector of selected item indices.
+# -------------------------------------------------------------------------
+
+sample_DPP <- function(eigendecomposition,
+                       method = c("standard", "kDPP", "deterministic"),
+                       k = NULL) {
+
+  method <- match.arg(method)
+
+  eigenvalues  <- eigendecomposition$values
+  eigenvectors <- as.matrix(eigendecomposition$vectors)
+  N <- length(eigenvalues)
+
+
+  if (method %in% c("kDPP", "deterministic") && is.null(k)) {
+    stop("Please provide a value of 'k'.")
+  }
+
+  if (!is.null(k)) {
+    if (length(k) != 1 || !is.finite(k) || k < 0 || k != as.integer(k)) {
+      stop("Please provide a valid choice of 'k'")
+    }
+    if (k > N) {
+      stop("'k' cannot exceed the number of eigenvalues.")
+    }
+    k <- as.integer(k)
+  }
+
+  # -------------------------------------------------------------------------------------
+  #   Given a matrix whose columns form a basis, and a vector corresponding
+  #   to a selected coordinate direction, we update the basis so that it spans
+  #   only those directions that are orthogonal to the selected coordinate.
+  # -------------------------------------------------------------------------------------
+
+  orthogonalize_to_coordinate <- function(V, e, tol = 1e-10) {
+    V <- as.matrix(V)
+    e <- as.matrix(e)
+
+    if (ncol(V) == 0L) {
+      return(matrix(0, nrow = nrow(V), ncol = 0L))
+    }
+
+    pivot_column <- NULL
+
+    for (j in seq_len(ncol(V))) {
+      inner_product <- drop(t(V[, j, drop = FALSE]) %*% e)
+      if (abs(inner_product) > tol) {
+        pivot_column <- V[, j, drop = FALSE]
+        break
+      }
+    }
+
+    # If every column is already orthogonal to e, the whole span survives.
+    if (is.null(pivot_column)) {
+      qr_fit <- qr(V)
+      return(qr.Q(qr_fit)[, seq_len(qr_fit$rank), drop = FALSE])
+    }
+
+    projected_columns <- apply(V, 2, function(v) {
+      v <- as.matrix(v)
+      coefficient <- drop(t(v) %*% e / (t(pivot_column) %*% e))
+      v - coefficient * pivot_column
+    })
+
+    projected_columns <- as.matrix(projected_columns)
+
+    keep <- colSums(abs(projected_columns)) > tol
+    projected_columns <- projected_columns[, keep, drop = FALSE]
+
+    if (ncol(projected_columns) == 0L) {
+      return(matrix(0, nrow = nrow(V), ncol = 0L))
+    }
+
+    qr_fit <- qr(projected_columns)
+    Q <- qr.Q(qr_fit)
+
+    Q[, seq_len(qr_fit$rank), drop = FALSE]
+  }
+
+  # -----------------------------------------------------------------------
+  # Compute elementary symmetric polynomials recursively.
+  #
+  # The returned matrix E satisfies:
+  #   E[n + 1, l + 1] = e_l(lambda_1, ..., lambda_n)
+  #
+  # This is used in the standard backward-selection algorithm for choosing
+  # eigenvectors in a k-DPP.
+  # -----------------------------------------------------------------------
+
+  compute_elementary_symmetric_polynomials <- function(k, eigenvalues) {
+    N <- length(eigenvalues)
+    E <- matrix(0, nrow = N + 1, ncol = k + 1)
+
+    E[, 1] <- 1
+
+    for (ell in 2:(k + 1)) {
+      for (n in 2:(N + 1)) {
+        E[n, ell] <- E[n - 1, ell] +
+          eigenvalues[n - 1] * E[n - 1, ell - 1]
+      }
+    }
+    E
+  }
+
+  # -----------------------------------------------------------------------
+  # Select k eigenvectors for a k-DPP
+  # -----------------------------------------------------------------------
+  sample_k_eigenvectors <- function(k, eigenvalues) {
+    N <- length(eigenvalues)
+
+    if (k == 0L) {
+      return(integer(0))
+    }
+
+    E <- compute_elementary_symmetric_polynomials(k, eigenvalues)
+
+    J <- integer(0)
+    ell <- k + 1
+
+    for (n in (N + 1):2) {
+      if (ell == 1L) {
+        break
+      }
+
+      denominator <- E[n, ell]
+
+      if (denominator == 0) {
+        inclusion_probability <- 0
+      } else {
+        inclusion_probability <-
+          eigenvalues[n - 1L] * E[n - 1L, ell - 1L] / denominator
+      }
+
+      inclusion_probability <- max(0, min(1, inclusion_probability))
+
+      if (runif(1) < inclusion_probability) {
+        J <- c(selected, as.integer(n - 1L))
+        ell <- ell - 1L
+      }
+    }
+
+    J
+  }
+
+  # -----------------------------------------------------------------------
+  # Step 1: choose the active eigenvectors
+  # -----------------------------------------------------------------------
+  if (method == "standard") {
+    probabilities <- eigenvalues / (eigenvalues + 1)
+    active_indices <- which(runif(N) < probabilities)
+    V <- eigenvectors[, active_indices, drop = FALSE]
+
+  } else if (method == "kDPP") {
+    active_indices <- sample_k_eigenvectors(k, eigenvalues)
+    V <- eigenvectors[, active_indices, drop = FALSE]
+
+  } else {  # deterministic
+    active_indices <- order(eigenvalues, decreasing = TRUE)[seq_len(k)]
+    V <- eigenvectors[, active_indices, drop = FALSE]
+  }
+
+  # -----------------------------------------------------------------------
+  # Stage 2: Selection of Items
+  #
+  # For the randomized versions ("standard" and "kDPP"), an item is sampled
+  # with probability proportional to its squared row norm in V.
+  #
+  # For the deterministic version, the item with the largest score is
+  # selected at each step.
+  # -----------------------------------------------------------------------
+  selected_items <- integer(0)
+
+  while (ncol(V) > 0) {
+    row_scores <- rowSums(V^2) / ncol(V)
+
+    if (method %in% c("standard", "kDPP")) {
+      chosen_item <- sample(seq_len(nrow(V)), size = 1, prob = row_scores)
+    } else {
+      chosen_item <- which.max(row_scores)
+    }
+
+    selected_items <- c(selected_items, as.integer(chosen_item))
+
+    if (ncol(V) == 1L) {
+      break
+    }
+
+    e_i <- rep(0, nrow(V))
+    e_i[chosen_item] <- 1
+
+    V <- orthogonalize_to_coordinate(V, as.matrix(e_i))
+  }
+
+  as.vector(selected_items) # Output
+}
