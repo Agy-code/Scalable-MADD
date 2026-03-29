@@ -26,14 +26,17 @@
 #   2. print.MADD = TRUE returns the MADD matrix used in classification.
 #                   -Default is FALSE.
 # Input: 
-#         trainX = features of training data
-#         trainY = class labels of training data
-#         testX = features of test data
-#         testY = class labels of test data, if available.
-#         Dtrain = distance matrix between training data points.
-#         ref.points = reference points used in NN_MADD_sc classifier.
-#         memory.eff = memory efficiency needed or not.
-#         print.MADD = prints the MADD matrix in the output, TRUE/FALSE, 
+#         trainX = Features of training data, it should be a data.frame or matrix.
+#         trainY = Class labels of training data, it should be a vector.
+#         testX = Features of test data, it should be a data.frame or matrix.
+#         testY = Vector of class labels of test data, if available.
+#         Dtrain = Distance matrix between training data points. 
+#                  This should be a distance object or a matrix.
+#                   If not provided, uses the Rfast package.
+#         ref.points = Reference points used in NN_MADD_sc classifier. 
+#                      (There should be at least two reference points.) 
+#         memory.eff = Memory efficiency needed or not. Default is NO.
+#         print.MADD = Prints the MADD matrix in the output, TRUE/FALSE, 
 #                      Default is FALSE.
 # 
 # Output:
@@ -48,7 +51,7 @@ nn_madd <- function(trainX, trainY,
                     testX, testY = NULL,
                     Dtrain = NULL,
                     ref.points = NULL,
-                    memory.eff = c("NO","YES"),
+                    memory.eff = "NO",
                     print.MADD = FALSE) {
 
   trainX <- as.matrix(trainX)
@@ -57,6 +60,10 @@ nn_madd <- function(trainX, trainY,
 
   if (!is.null(testY)) {
     testY <- as.vector(testY)
+  }
+
+  if (!memory.eff %in% c("NO", "YES")) {
+    stop("memory.eff must be either 'NO' or 'YES'")
   }
 
   n <- nrow(trainX)  # Training data size
