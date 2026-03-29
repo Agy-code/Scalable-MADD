@@ -1,5 +1,4 @@
 
-
 # -------------------------------------------------------------------------
 # Sampling from DPP
 # -------------------------------------------------------------------------
@@ -11,6 +10,29 @@
 #   3. "deterministic" : selects k items using a deterministic 
 #                        method, it maintains the descending order of
 #                        diversity among the sleected points.
+#
+#
+# Input: 1. eigendecomposition of L-matrix
+#  - eigendecomposition$values   : eigenvalues
+#  - eigendecomposition$vectors  : corresponding eigenvectors
+#        2. Method of DPP 
+#        3. Number of points to be selected = k.
+#
+# Output:
+#   A vector of selected item indices.
+# -------------------------------------------------------------------------
+
+# -------------------------------------------------------------------------
+# Sampling from DPP
+# -------------------------------------------------------------------------
+#
+# This function supports:
+#
+#   1. "standard"      : samples from a naive DPP
+#   2. "kDPP"          : samples exactly k items from a k-DPP
+#   3. "deterministic" : selects k items using a deterministic 
+#                        method, it maintains the descending order of
+#                        diversity among the selected points.
 #
 #
 # Input: 1. eigendecomposition of L-matrix
