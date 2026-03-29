@@ -2,19 +2,32 @@
 # Nearest Neighbor Classifier with MADD
 # -------------------------------------------------------------------------
 #
-# This function implements NN_MADD and NN_MADD_sc classification:
-#   1. Compute rho_sc(z, x_i) for every training observation x_i
-#      using a representative set X* (called ref.points here).
-#      If, X* is the entire training set, then perform NN_MADD.
-#   2. For each class j, compute the minimum rho_sc(z, x_i)
-#      over all training points belonging to class j.
-#   3. Assign z to the class with the smallest classwise minimum.
-#   
-#Note: 1. It can perform in memory efficient or computing effeiceint manner for NN_MADD classification . 
-# - memory.eff = "YES" avoids storing the full n x n training Euclidean distance matrix.
-# - memory.eff = "NO" uses a precomputed or newly computed full Euclidean distance matrix.
-#      2. print.MADD = TRUE gives the MADD matrix used in classification. The default is FALSE.
-
+# This function implements NN_MADD and NN_MADD_sc classification methods.
+#
+# Steps:
+#   1. For a query point z, compute rho_sc(z, x_i) for each training
+#      observation x_i using a representative set X* (ref.points).
+#      If X* is the full training set, this corresponds to NN_MADD.
+#
+#   2. For each class j, determine the minimum rho_sc(z, x_i)
+#      among all training points belonging to class j.
+#
+#   3. Assign z to the class with the smallest class-wise minimum distance.
+#
+# Notes:
+#   1. The function can be run in either memory-efficient or
+#      computation-efficient mode:
+#        - memory.eff = "YES":
+#            Does not store the full n x n Euclidean distance matrix
+#            (more memory-efficient, slightly slower).
+#        - memory.eff = "NO":
+#            Uses a precomputed or newly computed full distance matrix
+#            (faster, but requires more memory).
+#
+#   2. print.MADD = TRUE returns the MADD matrix used in classification.
+#      Default is FALSE.
+#
+# -------------------------------------------------------------------------
 # -------------------------------------------------------------------------
 
 nn_madd <- function(trainX, trainY,
