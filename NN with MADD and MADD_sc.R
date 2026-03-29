@@ -32,18 +32,23 @@
 #         testY = class labels of test data, if available.
 #         Dtrain = distance matrix between training data points.
 #         ref.points = reference points used in NN_MADD_sc classifier.
-#         memory.eff = memory efficiency needed or not. Default is "No".
+#         memory.eff = memory efficiency needed or not.
 #         print.MADD = prints the MADD matrix in the output, TRUE/FALSE, 
 #                      Default is FALSE.
 # 
 # Output:
+#     -  MADD matrix.
+#     - Predicted class-labels for the test data points.
+#       If true class labels of test data are available:
+#        - Confusion matrix.
+#        - Accuracy of the classifier.
 # -------------------------------------------------------------------------
 
 nn_madd <- function(trainX, trainY,
                     testX, testY = NULL,
                     Dtrain = NULL,
                     ref.points = NULL,
-                    memory.eff = "No",
+                    memory.eff = c("NO","YES"),
                     print.MADD = FALSE) {
 
   trainX <- as.matrix(trainX)
@@ -54,9 +59,9 @@ nn_madd <- function(trainX, trainY,
     testY <- as.vector(testY)
   }
 
-  n <- nrow(trainX)
-  m <- nrow(testX)
-  d <- ncol(trainX)
+  n <- nrow(trainX)  # Training data size
+  m <- nrow(testX)   # Test data size
+  d <- ncol(trainX)  # Dimension of the data.
 
 
   class.labels <- unique(trainY)
@@ -92,13 +97,8 @@ nn_madd <- function(trainX, trainY,
 
       for (t in seq_len(m)) {
         z <- testX[t, ]
-
-        # Distances from z to all training points
         d_z <- distance_to_point(trainX, z)
 
-        # For each training point x_i, compute
-        # mean_r | ||z - x_r|| - ||x_i - x_r|| |
-        # over r != i
         diff_mat <- abs(sweep(Dtrain, 2, d_z, "-"))
         madd_row <- (rowSums(diff_mat) - diag(diff_mat)) / (n - 1)
 
@@ -116,7 +116,7 @@ nn_madd <- function(trainX, trainY,
 
     } else if (memory.eff == "YES") {
 
-      # Memory-efficient branch:avoids storing the
+      # Memory-efficient branch: avoids storing the
       # full n x n training distance matrix.
 
       if (print.MADD) {
@@ -151,24 +151,12 @@ nn_madd <- function(trainX, trainY,
   # -----------------------------------------------------------------------
   # Case 2: Reference points supplied
   # Then X* is the representative set indexed by ref.points.
-  # This is the scalable version of MADD.
+  # This is NN_MADD_sc.
   # -----------------------------------------------------------------------
   } else {
-
-    ref.points <- as.integer(ref.points)
-
-    ref.points <- unique(ref.points)
     P <- length(ref.points)
-
-    if (P < 1L) {
-      stop("ref.points must contain at least one index.")
-    }
-
+    
     refX <- trainX[ref.points, , drop = FALSE]
-
-    # Distances from every training point to every reference point.
-    # If Dtrain is available, we reuse it; otherwise we compute only the
-    # n x P block that we need here.
  
     if (!is.null(Dtrain)) {
       Dtrain <- as.matrix(Dtrain)
@@ -192,29 +180,18 @@ nn_madd <- function(trainX, trainY,
 
     for (t in seq_len(m)) {
       z <- testX[t, ]
-
-      # Distances from z to the reference points
       d_z_ref <- distance_to_point(refX, z)
-
-      # For each training point x_i:
-      # rho_sc(z, x_i) = average over ref points r in X* \ {x_i}
-      # of | ||z - r|| - ||x_i - r|| |
       diff_mat <- abs(sweep(D_tr_ref, 2, d_z_ref, "-"))
       madd_row <- rowMeans(diff_mat)
 
       # If x_i itself belongs to the reference set, then it should be excluded
-      # from the average, exactly as in rho_sc(u, v) with X* \ {u, v}.
+    
       if (any(is.reference)) {
         idx <- which(is.reference)
         col_idx <- ref.position[idx]
 
         adjusted_sum <- rowSums(diff_mat[idx, , drop = FALSE]) -
-          diff_mat[cbind(idx, col_idx)]
-
-        if (P == 1L) {
-          stop("When a training point is also a reference point, at least two reference points are needed.")
-        }
-
+                                diff_mat[cbind(idx, col_idx)]
         madd_row[idx] <- adjusted_sum / (P - 1)
       }
 
