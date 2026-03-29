@@ -155,10 +155,10 @@ sample_DPP <- function(eigendecomposition,
 
       inclusion_probability <- max(0, min(1, inclusion_probability))
 
-      if (runif(1) < inclusion_probability) {
-        J <- c(selected, as.integer(n - 1L))
-        ell <- ell - 1L
-      }
+     if (runif(1) < inclusion_probability) {
+         J <- c(J, as.integer(n - 1L))
+         ell <- ell - 1L
+         }
     }
 
     J
