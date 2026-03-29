@@ -5,14 +5,13 @@
 # This function implements NN_MADD and NN_MADD_sc classification methods.
 #
 # Steps:
-#   1. For a query point z, compute rho_sc(z, x_i) for each training
-#      observation x_i using a representative set X* (ref.points).
-#      If X* is the full training set, this corresponds to NN_MADD.
+#   1. For a query point z, compute rho_sc(z,.) for each training
+#      observations using a representative set X* (ref.points).
+#      If X* = NULL, then it uses the entire training data for MADD 
+#      computations. Hence, it gives rho(z,.).
 #
-#   2. For each class j, determine the minimum rho_sc(z, x_i)
-#      among all training points belonging to class j.
-#
-#   3. Assign z to the class with the smallest class-wise minimum distance.
+#   2. Then it applies the nearest neighbor classification technique 
+#      based on the considered dissimilarity (rho or rho_sc). 
 #
 # Notes:
 #   1. The function can be run in either memory-efficient or
@@ -21,23 +20,31 @@
 #            Does not store the full n x n Euclidean distance matrix
 #            (more memory-efficient, slightly slower).
 #        - memory.eff = "NO":
-#            Uses a precomputed or newly computed full distance matrix
+#            Uses a full distance matrix
 #            (faster, but requires more memory).
 #
 #   2. print.MADD = TRUE returns the MADD matrix used in classification.
-#      Default is FALSE.
-#
-# -------------------------------------------------------------------------
+#                   -Default is FALSE.
+# Input: 
+#         trainX = features of training data
+#         trainY = class labels of training data
+#         testX = features of test data
+#         testY = class labels of test data, if available.
+#         Dtrain = distance matrix between training data points.
+#         ref.points = reference points used in NN_MADD_sc classifier.
+#         memory.eff = memory efficiency needed or not. Default is "No".
+#         print.MADD = prints the MADD matrix in the output, TRUE/FALSE, 
+#                      Default is FALSE.
+# 
+# Output:
 # -------------------------------------------------------------------------
 
 nn_madd <- function(trainX, trainY,
                     testX, testY = NULL,
                     Dtrain = NULL,
                     ref.points = NULL,
-                    memory.eff = c("NO", "YES"),
+                    memory.eff = "No",
                     print.MADD = FALSE) {
-
-  memory.eff <- match.arg(memory.eff)
 
   trainX <- as.matrix(trainX)
   testX  <- as.matrix(testX)
@@ -64,14 +71,13 @@ nn_madd <- function(trainX, trainY,
 
   # -----------------------------------------------------------------------
   # Case 1: No reference points supplied
-  # Then X* = X, i.e. the full training sample is used as the reference set.
-  # This reduces to ordinary MADD with the full training data.
+  # Then X* = trainX, i.e., the full training sample is used.
   # -----------------------------------------------------------------------
   if (is.null(ref.points)) {
 
     if (memory.eff == "NO") {
 
-      # Use the given full distance matrix if available; otherwise compute it.
+      # Use the given full distance matrix if available; otherwise, compute it.
       if (is.null(Dtrain)) {
         Dtrain <- as.matrix(Rfast::Dist(trainX))
       } else {
@@ -110,7 +116,7 @@ nn_madd <- function(trainX, trainY,
 
     } else if (memory.eff == "YES") {
 
-      # Memory-efficient branch:avoid storing the
+      # Memory-efficient branch:avoids storing the
       # full n x n training distance matrix.
 
       if (print.MADD) {
