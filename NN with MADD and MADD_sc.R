@@ -13,9 +13,8 @@
 #   2. Then it applies the nearest neighbor classification technique 
 #      based on the considered dissimilarity (rho or rho_sc). 
 #
-# Notes:
-#   1. The function can be run in either memory-efficient or
-#      computation-efficient mode:
+# Note: The function can be run in either memory-efficient or
+#       computation-efficient mode:
 #        - memory.eff = "YES":
 #            Does not store the full n x n Euclidean distance matrix
 #            (more memory-efficient, slightly slower).
@@ -23,32 +22,34 @@
 #            Uses a full distance matrix
 #            (faster, but requires more memory).
 #
-#   2. print.MADD = TRUE returns the MADD matrix used in classification.
-#                   -Default is FALSE.
+#  
 # Input: 
-#         trainX = Features of training data, it should be a data.frame or matrix.
-#         trainY = Class labels of training data, it should be a vector.
-#         testX = Features of test data, it should be a data.frame or matrix.
-#         testY = Vector of class labels of test data, if available.
-#         Dtrain = Distance matrix between training data points. 
+#         trainX  = Features of training data, it should be a data.frame or matrix.
+#         trainY  = Class labels of training data, it should be a vector.
+#         testX   = Features of test data, it should be a data.frame or matrix.
+#         testY   = Vector of class labels of test data, if available.
+#         Dtrain  = Distance matrix between training data points. 
 #                  This should be a distance object or a matrix.
 #                   If not provided, uses the Rfast package.
 #         ref.points = Reference points used in NN_MADD_sc classifier. 
 #                      (There should be at least two reference points.) 
 #         memory.eff = Memory efficiency needed or not. Default is NO.
-#         print.MADD = Prints the MADD matrix in the output, TRUE/FALSE, 
-#                      Default is FALSE.
+#         print.MADD = Prints the MADD matrix in the output; it takes two 
+#                      values, TRUE/FALSE. 
+#                     - Default is FALSE.
 # 
 # Output:
-#     -  MADD matrix.
+#     -  MADD matrix, if print.MADD = TRUE.
 #     - Predicted class-labels for the test data points.
-#       If true class labels of test data are available:
-#        - Confusion matrix.
-#        - Accuracy of the classifier.
+#     - If true class labels of test data are available:
+#         -- Confusion matrix.
+#         -- Accuracy of the classifier.
 # -------------------------------------------------------------------------
 
-nn_madd <- function(trainX, trainY,
-                    testX, testY = NULL,
+nn_madd <- function(trainX, 
+                    trainY,
+                    testX,
+                    testY = NULL,
                     Dtrain = NULL,
                     ref.points = NULL,
                     memory.eff = "NO",
@@ -66,10 +67,9 @@ nn_madd <- function(trainX, trainY,
     stop("memory.eff must be either 'NO' or 'YES'")
   }
 
-  n <- nrow(trainX)  # Training data size
-  m <- nrow(testX)   # Test data size
-  d <- ncol(trainX)  # Dimension of the data.
-
+  n <- nrow(trainX)    # Training data size
+  m <- nrow(testX)     # Test data size
+  d <- ncol(trainX)    # Dimension of the data.
 
   class.labels <- unique(trainY)
   have_test_labels <- !is.null(testY)
@@ -82,14 +82,14 @@ nn_madd <- function(trainX, trainY,
   }
 
   # -----------------------------------------------------------------------
-  # Case 1: No reference points supplied
+  # Case 1: No reference point is supplied (calculates rho).
   # Then X* = trainX, i.e., the full training sample is used.
   # -----------------------------------------------------------------------
   if (is.null(ref.points)) {
 
     if (memory.eff == "NO") {
 
-      # Use the given full distance matrix if available; otherwise, compute it.
+  # Uses the given full distance matrix if available; otherwise, computes it.
       if (is.null(Dtrain)) {
         Dtrain <- as.matrix(Rfast::Dist(trainX))
       } else {
@@ -109,7 +109,7 @@ nn_madd <- function(trainX, trainY,
         diff_mat <- abs(sweep(Dtrain, 2, d_z, "-"))
         madd_row <- (rowSums(diff_mat) - diag(diff_mat)) / (n - 1)
 
-        # NN-classification:
+  # NN-classification:
         classwise_min <- sapply(class.labels, function(cl) {
           min(madd_row[trainY == cl])
         })
@@ -123,8 +123,7 @@ nn_madd <- function(trainX, trainY,
 
     } else if (memory.eff == "YES") {
 
-      # Memory-efficient branch: avoids storing the
-      # full n x n training distance matrix.
+ # Memory-efficient branch: avoids storing the n x n distance matrix.
 
       if (print.MADD) {
         MADD_mat <- matrix(0, nrow = m, ncol = n)
@@ -156,9 +155,8 @@ nn_madd <- function(trainX, trainY,
     }
 
   # -----------------------------------------------------------------------
-  # Case 2: Reference points supplied
+  # Case 2: Reference points are supplied (calculates rho_sc).
   # Then X* is the representative set indexed by ref.points.
-  # This is NN_MADD_sc.
   # -----------------------------------------------------------------------
   } else {
     P <- length(ref.points)
@@ -175,7 +173,7 @@ nn_madd <- function(trainX, trainY,
       }
     }
 
-    # Identify the training observations contained in the reference set.
+    # To identify the training observations contained in the reference set.
     ref.position <- match(seq_len(n), ref.points, nomatch = 0L)
     is.reference <- ref.position > 0L
 
@@ -196,7 +194,6 @@ nn_madd <- function(trainX, trainY,
       if (any(is.reference)) {
         idx <- which(is.reference)
         col_idx <- ref.position[idx]
-
         adjusted_sum <- rowSums(diff_mat[idx, , drop = FALSE]) -
                                 diff_mat[cbind(idx, col_idx)]
         madd_row[idx] <- adjusted_sum / (P - 1)
