@@ -1,15 +1,16 @@
-
 make_k_choices <- function(trainY, d, powers = seq(-1, 3, 1)) {
 
   class_sizes <- table(trainY)
-  n <- length(trainY)  # Total training sample size
+  n <- length(trainY)  # total training sample size
 
-  #------ Equal class sizes---------------
+  # Equal class sizes
   if (length(unique(class_sizes)) == 1) {
 
     nj <- as.numeric(class_sizes[1])
 
-    k_choices <- round((2^powers) * log(nj) * sqrt(d) * (nj / n))
+    k_choices <- round(
+      (2^powers) * log(nj) * sqrt(d) * (nj / n)
+    )
 
     k_choices <- pmax(k_choices, 1)
     k_choices <- pmin(k_choices, nj)
@@ -18,10 +19,12 @@ make_k_choices <- function(trainY, d, powers = seq(-1, 3, 1)) {
     return(k_choices)
   }
 
-  # ----------Unequal class sizes----------------
+  # Unequal class sizes
   k_mat <- sapply(class_sizes, function(nj) {
 
-    k_j <- round((2^powers) * log(nj) * sqrt(d) * (nj / n))
+    k_j <- round(
+      (2^powers) * log(nj) * sqrt(d) * (nj / n)
+    )
 
     k_j <- pmax(k_j, 1)
     k_j <- pmin(k_j, nj)
