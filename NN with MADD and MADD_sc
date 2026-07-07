@@ -46,14 +46,16 @@
 #         -- Accuracy of the classifier.
 # -------------------------------------------------------------------------
 
-nn_madd <- function(trainX, 
+    
+nn_madd <- function(trainX,
                     trainY,
                     testX,
                     testY = NULL,
                     Dtrain = NULL,
-                    ref.points = NULL,
+                    k = 1,
+                    reference.ind = NULL,
                     memory.eff = "NO",
-                    print.MADD = FALSE) {
+                    return_MADD = FALSE) {
 
   trainX <- as.matrix(trainX)
   testX  <- as.matrix(testX)
@@ -67,71 +69,90 @@ nn_madd <- function(trainX,
     stop("memory.eff must be either 'NO' or 'YES'")
   }
 
-  n <- nrow(trainX)    # Training data size
-  m <- nrow(testX)     # Test data size
-  d <- ncol(trainX)    # Dimension of the data.
+  n <- nrow(trainX)
+  m <- nrow(testX)
+  d <- ncol(trainX)
 
-  class.labels <- unique(trainY)
+  if (length(k) != 1L || !is.finite(k) ||
+      k < 1L || k != as.integer(k) || k > n) {
+    stop("k must be a positive integer not exceeding the training sample size.")
+  }
+
+  k <- as.integer(k)
+
+  if (!is.null(reference.ind)) {
+
+    reference.ind <- as.integer(reference.ind)
+
+    if (length(reference.ind) < 2L) {
+      stop("Need at least 2 reference points.")
+    }
+
+    if (any(reference.ind < 1L) || any(reference.ind > n)) {
+      stop("reference.ind contains invalid training indices.")
+    }
+  }
+
   have_test_labels <- !is.null(testY)
 
-  # -----------------------------------------------------------------------
-  # Euclidean distances from every row of A to a single vector x
-  # -----------------------------------------------------------------------
   distance_to_point <- function(A, x) {
-    sqrt(rowSums((A - matrix(x, nrow = nrow(A), ncol = ncol(A), byrow = TRUE))^2))
+    sqrt(
+      rowSums(
+        (A - matrix(
+          x,
+          nrow = nrow(A),
+          ncol = ncol(A),
+          byrow = TRUE
+        ))^2
+      )
+    )
   }
 
   # -----------------------------------------------------------------------
-  # Case 1: No reference point is supplied (calculates rho).
-  # Then X* = trainX, i.e., the full training sample is used.
+  # Case 1: No reference point is supplied.
   # -----------------------------------------------------------------------
-  if (is.null(ref.points)) {
+  if (is.null(reference.ind)) {
 
     if (memory.eff == "NO") {
 
-  # Uses the given full distance matrix if available; otherwise, computes it.
       if (is.null(Dtrain)) {
         Dtrain <- as.matrix(Rfast::Dist(trainX))
       } else {
         Dtrain <- as.matrix(Dtrain)
       }
 
-      if (print.MADD) {
+      if (return_MADD) {
         MADD_mat <- matrix(0, nrow = m, ncol = n)
       }
 
       preds <- character(m)
 
       for (t in seq_len(m)) {
+
         z <- testX[t, ]
         d_z <- distance_to_point(trainX, z)
 
         diff_mat <- abs(sweep(Dtrain, 2, d_z, "-"))
         madd_row <- (rowSums(diff_mat) - diag(diff_mat)) / (n - 1)
 
-  # NN-classification:
-        classwise_min <- sapply(class.labels, function(cl) {
-          min(madd_row[trainY == cl])
-        })
+        nn <- order(madd_row)[seq_len(k)]
+        preds[t] <- names(which.max(table(trainY[nn])))
 
-        preds[t] <- class.labels[which.min(classwise_min)]
-
-        if (print.MADD) {
+        if (return_MADD) {
           MADD_mat[t, ] <- madd_row
         }
       }
 
-    } else if (memory.eff == "YES") {
+    } else {
 
- # Memory-efficient branch: avoids storing the n x n distance matrix.
-
-      if (print.MADD) {
+      if (return_MADD) {
         MADD_mat <- matrix(0, nrow = m, ncol = n)
       }
 
       preds <- character(m)
 
       for (t in seq_len(m)) {
+
         z <- testX[t, ]
         d_z <- distance_to_point(trainX, z)
 
@@ -142,70 +163,70 @@ nn_madd <- function(trainX,
           madd_row[i] <- mean(abs(d_z[-i] - d_i[-i]))
         }
 
-        classwise_min <- sapply(class.labels, function(cl) {
-          min(madd_row[trainY == cl])
-        })
+        nn <- order(madd_row)[seq_len(k)]
+        preds[t] <- names(which.max(table(trainY[nn])))
 
-        preds[t] <- class.labels[which.min(classwise_min)]
-
-        if (print.MADD) {
+        if (return_MADD) {
           MADD_mat[t, ] <- madd_row
         }
       }
     }
 
   # -----------------------------------------------------------------------
-  # Case 2: Reference points are supplied (calculates rho_sc).
-  # Then X* is the representative set indexed by ref.points.
+  # Case 2: Reference points are supplied.
   # -----------------------------------------------------------------------
   } else {
-    P <- length(ref.points)
-    
-    refX <- trainX[ref.points, , drop = FALSE]
- 
+
+    P <- length(reference.ind)
+    refX <- trainX[reference.ind, , drop = FALSE]
+
     if (!is.null(Dtrain)) {
+
       Dtrain <- as.matrix(Dtrain)
-      D_tr_ref <- Dtrain[, ref.points, drop = FALSE]
+      D_tr_ref <- Dtrain[, reference.ind, drop = FALSE]
+
     } else {
+
       D_tr_ref <- matrix(0, nrow = n, ncol = P)
+
       for (p in seq_len(P)) {
         D_tr_ref[, p] <- distance_to_point(trainX, refX[p, ])
       }
     }
 
-    # To identify the training observations contained in the reference set.
-    ref.position <- match(seq_len(n), ref.points, nomatch = 0L)
+    ref.position <- match(seq_len(n), reference.ind, nomatch = 0L)
     is.reference <- ref.position > 0L
 
-    if (print.MADD) {
+    if (return_MADD) {
       MADD_mat <- matrix(0, nrow = m, ncol = n)
     }
 
     preds <- character(m)
 
     for (t in seq_len(m)) {
+
       z <- testX[t, ]
       d_z_ref <- distance_to_point(refX, z)
+
       diff_mat <- abs(sweep(D_tr_ref, 2, d_z_ref, "-"))
       madd_row <- rowMeans(diff_mat)
 
-      # If x_i itself belongs to the reference set, then it should be excluded
-    
       if (any(is.reference)) {
+
         idx <- which(is.reference)
         col_idx <- ref.position[idx]
-        adjusted_sum <- rowSums(diff_mat[idx, , drop = FALSE]) -
-                                diff_mat[cbind(idx, col_idx)]
+
+        adjusted_sum <-
+          rowSums(diff_mat[idx, , drop = FALSE]) -
+          diff_mat[cbind(idx, col_idx)]
+
         madd_row[idx] <- adjusted_sum / (P - 1)
       }
 
-      classwise_min <- sapply(class.labels, function(cl) {
-        min(madd_row[trainY == cl])
-      })
+      nn <- order(madd_row)[seq_len(k)]
+      preds[t] <- names(which.max(table(trainY[nn])))
 
-      preds[t] <- class.labels[which.min(classwise_min)]
-
-      if (print.MADD) {
+      if (return_MADD) {
         MADD_mat[t, ] <- madd_row
       }
     }
@@ -216,15 +237,13 @@ nn_madd <- function(trainX,
 
   if (have_test_labels) {
     conf <- table(prediction = preds, truth = testY)
-    acc  <- sum(diag(conf)) / sum(conf)
+    acc  <- mean(as.character(preds) == as.character(testY))
   }
 
-  output <- list(
-    MADD = if (print.MADD) MADD_mat else NULL,
+  list(
+    MADD = if (return_MADD) MADD_mat else NULL,
     prediction = preds,
     conf.matrix = conf,
     accuracy = acc
   )
-
-  return(output)
 }
