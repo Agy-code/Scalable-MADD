@@ -1,7 +1,13 @@
 
-cross_validation <- function(trainX, trainY, Dtrain, k_choices,
-                             folds = 5, knn = 1, D_RFF = 500L,
-                             method = "Deterministic",n_tolerance = 2000L) {
+cross_validation <- function(trainX, 
+                             trainY,
+                             Dtrain,
+                             k_choices,
+                             folds = 5, 
+                             knn = 1,
+                             D_RFF = 500,
+                             method = "Deterministic",
+                             n_tolerance = 2000) {
   trainX <- as.matrix(trainX)
   trainY <- as.vector(trainY)
   Dtrain <- as.matrix(Dtrain)
