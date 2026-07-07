@@ -1,74 +1,56 @@
 
-cross_validation <- function(trainX,
-                             trainY,
-                             Dtrain,
-                             k_choices,
-                             folds = 5,
-                             knn = 1L,
-                             D_RFF = 500L,
-                             sample_method ="deterministic",
-                             n_tol = 2000L) {
-
-  sample_method <- match.arg(sample_method)
-
+cross_validation <- function(trainX, trainY, Dtrain, k_choices,
+                             folds = 5, knn = 1, D_RFF = 500L,
+                             method = "Deterministic",n_tolerance = 2000L) {
   trainX <- as.matrix(trainX)
   trainY <- as.vector(trainY)
   Dtrain <- as.matrix(Dtrain)
 
   n <- nrow(trainX)
-  class_labels <- sort(unique(trainY))
-  class_names <- as.character(class_labels)
-  n_classes <- length(class_labels)
+  classes <- sort(unique(trainY))
+  class_chr <- as.character(classes)
+  J <- length(classes)
 
-  # -----------------------------------------------------------------------
-  # Interpret candidate k values
-  # -----------------------------------------------------------------------
-  shared_k_vector <- is.null(dim(k_choices))
+  vector_case <- is.null(dim(k_choices))
 
-  if (shared_k_vector) {
+  if (vector_case) {
     k_base <- sort(unique(pmax(1L, as.integer(k_choices))))
-    k_grid <- matrix(rep(k_base, times = n_classes),
-                     nrow = length(k_base),
-                     ncol = n_classes)
-    colnames(k_grid) <- class_names
+    k_mat <- matrix(rep(k_base, times = J), nrow = length(k_base), ncol = J)
+    colnames(k_mat) <- class_chr
   } else {
-    k_grid <- as.matrix(k_choices)
-    storage.mode(k_grid) <- "integer"
+    k_mat <- as.matrix(k_choices)
+    storage.mode(k_mat) <- "integer"
 
-    if (ncol(k_grid) != n_classes) {
+    if (ncol(k_mat) != J) {
       stop("If k_choices is a matrix/data.frame, it must have one column per class.")
     }
 
-    if (is.null(colnames(k_grid))) {
-      colnames(k_grid) <- class_names
+    if (is.null(colnames(k_mat))) {
+      colnames(k_mat) <- class_chr
     } else {
-      if (!all(class_names %in% colnames(k_grid))) {
+      if (!all(class_chr %in% colnames(k_mat))) {
         stop("Column names of k_choices must match class labels.")
       }
-      k_grid <- k_grid[, class_names, drop = FALSE]
+      k_mat <- k_mat[, class_chr, drop = FALSE]
     }
 
-    k_grid <- apply(k_grid, 2, function(x) pmax(1L, as.integer(x)))
-
-    if (is.vector(k_grid)) {
-      k_grid <- matrix(k_grid, ncol = n_classes)
-      colnames(k_grid) <- class_names
+    k_mat <- apply(k_mat, 2, function(x) pmax(1L, as.integer(x)))
+    if (is.vector(k_mat)) {
+      k_mat <- matrix(k_mat, ncol = J)
+      colnames(k_mat) <- class_chr
     }
   }
 
-  max_k_requested <- apply(k_grid, 2, max)
+  kmax_req <- apply(k_mat, 2, max)
 
-  format_k_choice <- function(k_row) {
-    if (shared_k_vector) {
+  format_k <- function(k_row){
+    if (vector_case) {
       as.integer(k_row[1L])
     } else {
       paste0("(", paste(k_row, collapse = ","), ")")
     }
   }
 
-  # -----------------------------------------------------------------------
-  # k-NN prediction from a test-to-training distance block
-  # -----------------------------------------------------------------------
   knn_predict_block <- function(dist_block, labels, k = 1L) {
     labels <- as.vector(labels)
 
@@ -76,157 +58,126 @@ cross_validation <- function(trainX,
       return(labels[max.col(-dist_block, ties.method = "first")])
     }
 
-    labels_chr <- as.character(labels)
-    predictions <- character(nrow(dist_block))
+    labs_chr <- as.character(labels)
+    out <- character(nrow(dist_block))
 
     for (i in seq_len(nrow(dist_block))) {
-      nn_index <- sort.int(dist_block[i, ],
-                           partial = seq_len(k),
-                           index.return = TRUE)$ix[seq_len(k)]
-      nn_labels <- labels_chr[nn_index]
-      label_counts <- table(nn_labels)
-      predictions[i] <- names(label_counts)[which.max(label_counts)]
+      idx <- order(dist_block[i, ])[seq_len(k)]
+      nn_labs <- labs_chr[idx]
+      tab <- table(nn_labs)
+      out[i] <- names(tab)[which.max(tab)]
     }
-
-    predictions
+    out
   }
 
-  # -----------------------------------------------------------------------
-  # Stratified folds
-  # -----------------------------------------------------------------------
-  fold_indices <- caret::createFolds(trainY, k = folds, returnTrain = FALSE)
+  folds_id <- caret::createFolds(trainY, k = folds, returnTrain = FALSE)
 
-  results <- vector("list", length = folds * nrow(k_grid))
-  result_counter <- 0L
+  results <- vector("list", folds * nrow(k_mat))
+  res_id <- 0L
 
-  # -----------------------------------------------------------------------
-  # CV loop
-  # -----------------------------------------------------------------------
-  for (fold_id in seq_along(fold_indices)) {
-    test_idx  <- fold_indices[[fold_id]]
-    train_idx <- setdiff(seq_len(n), test_idx)
+  for (f in seq_along(folds_id)) {
+    te <- folds_id[[f]]
+    tr <- setdiff(seq_len(n), te)
 
-    n_train_fold <- length(train_idx)
-    n_test_fold  <- length(test_idx)
+    n_train <- length(tr)
+    n_test  <- length(te)
 
-    X_train_fold <- trainX[train_idx, , drop = FALSE]
-    y_train_fold <- trainY[train_idx]
-    y_test_fold  <- as.character(trainY[test_idx])
+    trainY_f <- trainY[tr]
+    testY_f_chr <- as.character(trainY[te])
 
-    D_train_fold      <- Dtrain[train_idx, train_idx, drop = FALSE]
-    D_test_train_fold <- Dtrain[test_idx, train_idx, drop = FALSE]
+    Dtrain_f       <- Dtrain[tr, tr, drop = FALSE]
+    D_test_train_f <- Dtrain[te, tr, drop = FALSE]
 
-    class_counts_fold <- tabulate(match(y_train_fold, class_labels),
-                                  nbins = n_classes)
-    names(class_counts_fold) <- class_names
+    class_counts_f <- tabulate(match(trainY_f, classes), nbins = J)
+    names(class_counts_f) <- class_chr
 
-    max_k_fold <- pmin(max_k_requested, class_counts_fold)
-    names(max_k_fold) <- class_names
+    kmax_fold_req <- pmin(kmax_req, class_counts_f)
+    names(kmax_fold_req) <- class_chr
 
-    ref_index_list <- dpp_index(
-      trainX = X_train_fold,
-      trainY = y_train_fold,
-      Dtrain = D_train_fold,
+    dpp_ids <- dpp_index(
+      trainX = trainX[tr, , drop = FALSE],
+      trainY = trainY_f,
+      Dtrain = Dtrain_f,
       D_RFF = D_RFF,
-      n_tol = n_tol,
-      k = max_k_fold,
-      sample_method = sample_method,
+      n_tolerance = n_tolerance,
+      k = kmax_fold_req,
+      sample_method = method,
       output = "list"
     )
 
-    available_per_class <- vapply(class_names,
-                                  function(cl) length(ref_index_list[[cl]]),
-                                  integer(1L))
+    avail_len <- vapply(class_chr, function(cl) length(dpp_ids[[cl]]), integer(1L))
 
-    feasible_rows <- rep(TRUE, nrow(k_grid))
-    for (j in seq_len(n_classes)) {
-      feasible_rows <- feasible_rows & (k_grid[, j] <= available_per_class[j])
+    feasible <- rep(TRUE, nrow(k_mat))
+    for (j in seq_len(J)) {
+      feasible <- feasible & (k_mat[, j] <= avail_len[j])
     }
 
-    if (!any(feasible_rows)) {
-      next
-    }
+    if (!any(feasible)) next
 
-    feasible_k_grid <- k_grid[feasible_rows, , drop = FALSE]
-    n_candidates <- nrow(feasible_k_grid)
+    k_use <- k_mat[feasible, , drop = FALSE]
+    n_candidates <- nrow(k_use)
 
-    # ---------------------------------------------------------------------
-    # Identify newly added references as k increases
-    # ---------------------------------------------------------------------
-    newly_added_refs <- vector("list", n_candidates)
-    previous_k <- rep(0L, n_classes)
+    add_list <- vector("list", n_candidates)
 
-    for (candidate_id in seq_len(n_candidates)) {
-      current_k <- feasible_k_grid[candidate_id, ]
-      new_ids <- integer(0)
+    k_prev <- rep(0L, J)
+    for (tt in seq_len(n_candidates)) {
+      k_cur <- k_use[tt, ]
+      new_ids_tt <- integer(0)
 
-      for (j in seq_len(n_classes)) {
-        if (current_k[j] > previous_k[j]) {
-          new_ids <- c(
-            new_ids,
-            ref_index_list[[class_names[j]]][(previous_k[j] + 1L):current_k[j]]
-          )
+      for (j in seq_len(J)) {
+        if (k_cur[j] > k_prev[j]) {
+          new_ids_tt <- c(new_ids_tt,
+                          dpp_ids[[class_chr[j]]][(k_prev[j] + 1L):k_cur[j]])
         }
       }
-
-      newly_added_refs[[candidate_id]] <- unique(as.integer(new_ids))
-      previous_k <- current_k
+      add_list[[tt]] <- unique(as.integer(new_ids_tt))
+      k_prev <- k_cur
     }
 
-    # ---------------------------------------------------------------------
-    # Incremental scalable MADD computation
-    # ---------------------------------------------------------------------
-    cumulative_abs_sum <- matrix(0, nrow = n_test_fold, ncol = n_train_fold)
-    total_refs_used <- 0L
-    is_reference_point <- integer(n_train_fold)
+    S_sum <- matrix(0, nrow = n_test, ncol = n_train)
+    T_added <- 0
+    is_included <- integer(n_train)
+    MADD_mean <- matrix(0, nrow = n_test, ncol = n_train)
 
-    madd_mean_block <- matrix(0, nrow = n_test_fold, ncol = n_train_fold)
+    for (tt in seq_len(n_candidates)) {
+      new_ids <- add_list[[tt]]
 
-    for (candidate_id in seq_len(n_candidates)) {
-      new_ref_ids <- newly_added_refs[[candidate_id]]
+      if (length(new_ids) > 0L) {
+        dzx_mat <- D_test_train_f[, new_ids, drop = FALSE]
+        dxx_mat <- Dtrain_f[, new_ids, drop = FALSE]
+        m_new <- length(new_ids)
 
-      if (length(new_ref_ids) > 0L) {
-        test_to_ref  <- D_test_train_fold[, new_ref_ids, drop = FALSE]
-        train_to_ref <- D_train_fold[, new_ref_ids, drop = FALSE]
-        n_new_refs   <- length(new_ref_ids)
-
-        for (r in seq_len(n_new_refs)) {
-          cumulative_abs_sum <-
-            cumulative_abs_sum +
-            abs(outer(test_to_ref[, r], train_to_ref[, r], "-"))
+        for (jj in seq_len(m_new)) {
+          S_sum <- S_sum + abs(outer(dzx_mat[, jj], dxx_mat[, jj], "-"))
         }
 
-        total_refs_used <- total_refs_used + n_new_refs
+        T_added <- T_added + m_new
 
-        for (ref_id in new_ref_ids) {
-          cumulative_abs_sum[, ref_id] <-
-            cumulative_abs_sum[, ref_id] -
-            abs(D_test_train_fold[, ref_id] - D_train_fold[ref_id, ref_id])
+        for (jref in new_ids) {
+            S_sum[, jref] <- S_sum[, jref] -
+                             abs(D_test_train_f[, jref] - Dtrain_f[jref, jref])
 
-          is_reference_point[ref_id] <- 1L
-        }
-      }
+            is_included[jref] <- 1L
+                                }      
+                 }
 
-      denominator <- pmax.int(1L, total_refs_used - is_reference_point)
-      madd_mean_block[] <- cumulative_abs_sum / rep(denominator, each = n_test_fold)
+      denom <- pmax.int(1L, T_added - is_included)
+      MADD_mean[] <- S_sum / rep(denom, each = n_test)
 
-      predicted_labels <- knn_predict_block(madd_mean_block,
-                                            y_train_fold,
-                                            k = knn)
+      pred_mean <- knn_predict_block(MADD_mean, trainY_f, k = knn)
+      acc <- mean(as.character(pred_mean) == testY_f_chr)
 
-      fold_accuracy <- mean(as.character(predicted_labels) == y_test_fold)
-
-      result_counter <- result_counter + 1L
-      results[[result_counter]] <- data.frame(
-        fold = fold_id,
-        k_per_class = format_k_choice(feasible_k_grid[candidate_id, ]),
-        accuracy = fold_accuracy,
+      res_id <- res_id + 1L
+      results[[res_id]] <- data.frame(
+        fold = f,
+        k_per_class = format_k(k_use[tt, ]),
+        accuracy = acc,
         stringsAsFactors = FALSE
       )
     }
   }
 
-  if (result_counter == 0L) {
+  if (res_id == 0L) {
     return(data.frame(
       fold = integer(0),
       k_per_class = character(0),
@@ -235,7 +186,8 @@ cross_validation <- function(trainX,
     ))
   }
 
-  output <- do.call(rbind, results[seq_len(result_counter)])
-  rownames(output) <- NULL
-  output
+  out <- do.call(rbind, results[seq_len(res_id)])
+  rownames(out) <- NULL
+  out
 }
+
