@@ -1,22 +1,3 @@
-
-# -------------------------------------------------------------------------
-# DPP-based selection of reference points for classification
-#
-# For each class, this function selects k_j representative observations
-# using a DPP-based sampling scheme. The selected observations are then
-# pooled to form the final set of reference points.
-#
-# The number of representatives in each class is controlled through k:
-#
-#   - a single value: same number for all classes
-#   - a vector: one value per class (in sorted class order)
-#   - a named vector: matched to class labels
-#
-# For moderate class sizes, an exact DPP is used.
-# For large classes (n_cl > n_tol), an approximate DPP based on 
-# Random Fourier Feature (RFF) is used instead.
-# -------------------------------------------------------------------------
-
 dpp_index <- function(trainX, trainY, Dtrain = NULL,
                       sample_size   = function(n) ceiling(sqrt(n)), 
                       k             = NULL,          
