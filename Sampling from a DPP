@@ -6,7 +6,7 @@
 #
 #   1. "standard"      : samples from a naive DPP
 #   2. "kDPP"          : samples exactly k items from a k-DPP
-#   3. "deterministic" : selects k items using a deterministic 
+#   3. "Deterministic" : selects k items using a deterministic 
 #                        method, it maintains the descending order of
 #                        diversity among the selected points.
 #
@@ -22,7 +22,7 @@
 # -------------------------------------------------------------------------
 
 sample_DPP <- function(eigendecomposition,
-                       method = c("standard", "kDPP", "deterministic"),
+                       method = c("standard", "kDPP", "Deterministic"),
                        k = NULL) {
 
   method <- match.arg(method)
@@ -32,7 +32,7 @@ sample_DPP <- function(eigendecomposition,
   N <- length(eigenvalues)
 
 
-  if (method %in% c("kDPP", "deterministic") && is.null(k)) {
+  if (method %in% c("kDPP", "Deterministic") && is.null(k)) {
     stop("Please provide a value of 'k'.")
   }
 
