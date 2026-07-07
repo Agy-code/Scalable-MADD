@@ -1,0 +1,174 @@
+
+NN_MADD_classsifier<- function(
+                    trainX, trainY,
+                    testX, testY = NULL,
+                    use_reference = TRUE,
+                    reference.ind = NULL,
+                    reference_k = NULL,
+                    reference_k_choices = NULL,
+                    do_cv = FALSE,
+                    folds = 5,
+                    knn_k = 1,
+                    Dtrain = NULL,
+                    memory.eff = "NO",
+                    n_tol_dpp = 2000,
+                    use_RFF = FALSE,
+                    D_RFF = 500,
+                    dpp_method = "kDPP",
+                    cv_sample_method = "Deterministic",
+                    return_MADD = FALSE,
+                    seed = NULL) {
+
+  if (!is.null(seed)) set.seed(seed)
+
+  trainX <- as.matrix(trainX)
+  testX  <- as.matrix(testX)
+  trainY <- as.vector(trainY)
+
+  n <- nrow(trainX)
+  d <- ncol(trainX)
+
+  if (is.null(Dtrain) && (memory.eff == "NO" || do_cv)) {
+    Dtrain <- Rfast::Dist(trainX)
+  }
+
+  # --------------------------------------------------
+  # Use full training sample as reference set
+  # --------------------------------------------------
+  if (!use_reference) {
+
+    return(
+      predict_madd_knn(
+        trainX = trainX,
+        trainY = trainY,
+        testX = testX,
+        testY = testY,
+        Dtrain = Dtrain,
+        k = knn_k,
+        reference.ind = NULL,
+        memory.eff = memory.eff,
+        return_MADD = return_MADD
+      )
+    )
+  }
+
+  # --------------------------------------------------
+  # Select reference points by class-wise DPP
+  # --------------------------------------------------
+  if (is.null(reference.ind)) {
+
+    if (do_cv) {
+
+      if (is.null(reference_k_choices)) {
+        reference_k_choices <- make_k_choices(trainY, d)
+      }
+
+      cv_result <- cross_validation(
+        trainX = trainX,
+        trainY = trainY,
+        Dtrain = as.matrix(Dtrain),
+        k_choices = reference_k_choices,
+        folds = folds,
+        knn = knn_k,
+        D_RFF = D_RFF,
+        method = cv_sample_method,
+        n_tolerance = n_tol_dpp
+      )
+
+      cv_fold <- aggregate(
+        accuracy ~ fold + k_per_class,
+        data = cv_result,
+        FUN = mean
+      )
+
+
+      cv_summary <- aggregate(
+        accuracy ~ k_per_class,
+        data = cv_fold,
+        FUN = mean
+      )
+
+      fold_counts <- aggregate(
+        fold ~ k_per_class,
+        data = cv_fold,
+        FUN = function(x) length(unique(x))
+      )
+
+      names(fold_counts)[names(fold_counts) == "fold"] <- "n_folds"
+
+      cv_summary <- merge(
+        cv_summary,
+        fold_counts,
+        by = "k_per_class",
+        sort = FALSE
+      )
+
+      cv_summary <- cv_summary[
+        cv_summary$n_folds == folds,
+        ,
+        drop = FALSE
+      ]
+
+      if (nrow(cv_summary) == 0L) {
+        stop(
+          "No reference-size candidate was feasible in every cross-validation fold. ",
+          "Reduce reference_k_choices."
+        )
+      }
+
+      best_k_text <- cv_summary$k_per_class[
+        which.max(cv_summary$accuracy)
+      ]
+
+      if (is.null(dim(reference_k_choices))) {
+
+        reference_k <- as.integer(best_k_text)
+
+      } else {
+
+        reference_k <- as.integer(
+          strsplit(gsub("[()]", "", best_k_text), ",")[[1]]
+        )
+
+        names(reference_k) <- colnames(reference_k_choices)
+      }
+    }
+
+    if (is.null(reference_k)) {
+      stop("Provide reference_k, or set do_cv = TRUE.")
+    }
+
+    reference.ind <- dpp_index(
+      trainX = trainX,
+      trainY = trainY,
+      Dtrain = Dtrain,
+      k = reference_k,
+      RFF = use_RFF,
+      D_RFF = D_RFF,
+      n_tolerance = n_tol_dpp,
+      sample_method = dpp_method,
+      output = "vector"
+    )
+  }
+
+  out <- predict_madd_knn(
+    trainX = trainX,
+    trainY = trainY,
+    testX = testX,
+    testY = testY,
+    Dtrain = Dtrain,
+    k = knn_k,
+    reference.ind = reference.ind,
+    memory.eff = memory.eff,
+    return_MADD = return_MADD
+  )
+
+  out$reference.ind <- reference.ind
+
+  if (do_cv && exists("cv_result")) {
+    out$cv.result <- cv_result
+    out$selected.reference_k <- reference_k
+  }
+
+  out
+}
