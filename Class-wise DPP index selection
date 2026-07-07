@@ -1,3 +1,4 @@
+
 # -------------------------------------------------------------------------
 # DPP-based selection of reference points for classification
 #
@@ -49,8 +50,16 @@ dpp_index <- function(trainX, trainY, Dtrain = NULL,
   k_type <- "rule"
 
 if (!is.null(k)) {
-  k <- as.integer(k)
 
+  if (!is.null(names(k))) {
+    if (!all(as.character(classes) %in% names(k))) {
+      stop("Names of k must match the class labels.")
+    }
+
+    k <- k[as.character(classes)]
+  }
+
+  k <- as.integer(k)
   if (length(k) == 1L) {
     k_type <- "scalar"
   } else {
