@@ -1,4 +1,3 @@
-
 cross_validation <- function(trainX, 
                              trainY,
                              Dtrain,
