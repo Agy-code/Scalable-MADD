@@ -1,4 +1,3 @@
-
 NN_MADD_classifier<- function(
                     trainX, trainY,
                     testX, testY = NULL,
