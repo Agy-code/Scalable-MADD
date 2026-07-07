@@ -1,0 +1,183 @@
+# -------------------------------------------------------------------------
+# DPP-based selection of reference points for classification
+#
+# For each class, this function selects k_j representative observations
+# using a DPP-based sampling scheme. The selected observations are then
+# pooled to form the final set of reference points.
+#
+# The number of representatives in each class is controlled through k:
+#
+#   - a single value: same number for all classes
+#   - a vector: one value per class (in sorted class order)
+#   - a named vector: matched to class labels
+#
+# For moderate class sizes, an exact DPP is used.
+# For large classes (n_cl > n_tol), an approximate DPP based on 
+# Random Fourier Feature (RFF) is used instead.
+# -------------------------------------------------------------------------
+
+dpp_index <- function(trainX, trainY, Dtrain = NULL,
+                      sample_size   = function(n) ceiling(sqrt(n)), 
+                      k             = NULL,          
+                      RFF           = FALSE,      # It allows the user to choose RFF even if n < n_tolerance.   
+                      D_RFF         = 500,
+                      n_tolerance   = 2000,
+                      sample_method = "kDPP", 
+                      output        = "vector") 
+{
+  trainY <- as.vector(trainY)
+  classes <- sort(unique(trainY))
+
+  class_sizes <- table(trainY)
+
+  if (any(class_sizes < 2)) {
+    stop("At least one class has < 2 members!")
+  }
+
+  # --------------------------------------------------
+  use_RFF <- isTRUE(RFF) || any(class_sizes > n_tolerance)
+
+  if (use_RFF && is.null(trainX)) {
+    stop("trainX must be provided when RFF = TRUE or when any class size exceeds n_tolerance.")
+  }
+
+  if (!use_RFF && is.null(Dtrain)) {
+    stop("Dtrain must be provided when exact DPP mode is used.")
+  }
+
+  # ---------- interpret k ----------
+  k_type <- "rule"
+
+if (!is.null(k)) {
+  k <- as.integer(k)
+
+  if (length(k) == 1L) {
+    k_type <- "scalar"
+  } else {
+    if (length(k) != length(classes)) {
+      stop(
+        "k must have length 1 or length equal to the number of classes (",
+        length(classes), ")."
+      )
+    }
+
+    k_type <- "vector"
+  }
+}
+
+  # ---------- helper: RFF ----------
+  make_RFF <- function(X, D, sigma) {
+    n <- nrow(X)
+    d <- ncol(X)
+
+    W <- matrix(rnorm(D * d, sd = 1 / sigma), nrow = D)
+    proj <- X %*% t(W)
+
+    if (D > 500L) {
+      b <- runif(D, min = 0, max = 2 * pi)
+      Z <- sqrt(2 / D) * cos(sweep(proj, 2, b, "+"))
+    } else {
+      Z <- cbind(cos(proj), sin(proj)) / sqrt(D)
+    }
+
+    Z
+  }
+
+  all_ids   <- integer(0)
+  class_ids <- vector("list", length(classes))
+  names(class_ids) <- classes
+
+  for (cl in classes) {
+    idx_cl <- which(trainY == cl)
+    n_cl   <- length(idx_cl)
+
+
+    if (k_type == "rule") {
+      k_cl <- min(sample_size(n_cl), n_cl)
+
+    } else if (k_type == "scalar") {
+      k_cl <- min(k, n_cl)
+
+    } else if (k_type == "vector") {
+      k_cl <- min(k[match(cl, classes)], n_cl)
+
+    } 
+    k_cl <- max(1L, as.integer(k_cl))
+
+    # ==================================================
+    # CASE A: exact DPP for ALL classes
+    # ==================================================
+    if (!use_RFF) {
+      Dcl <- as.matrix(Dtrain)[idx_cl, idx_cl, drop = FALSE]
+      sigma <- median(Dcl[upper.tri(Dcl)])
+
+      if (!is.finite(sigma) || sigma <= 0) {
+        sigma <- median(Dcl[Dcl > 0])
+        if (!is.finite(sigma) || sigma <= 0) {
+          sigma <- 1
+        }
+      }
+
+      Lcl <- exp(-(Dcl^2) / (2 * sigma^2))
+      eig <- eigen(Lcl, symmetric = TRUE)
+
+      sampled_local <- sample_DPP(eig, method = sample_method, k = k_cl)
+
+    } else {
+
+      # ==================================================
+      # CASE B: RFF-based DPP for ALL classes
+      # ==================================================
+      train_cl <- as.matrix(trainX)[idx_cl, , drop = FALSE]
+
+      if (!is.null(Dtrain)) {
+        Dcl <- as.matrix(Dtrain)[idx_cl, idx_cl, drop = FALSE]
+        sigma <- median(Dcl[upper.tri(Dcl)])
+      } else {
+        samp <- sample(n_cl, min(2000L, n_cl))
+        D_samp <- as.matrix(dist(train_cl[samp, , drop = FALSE]))
+        sigma <- median(D_samp[upper.tri(D_samp)])
+      }
+
+      if (!is.finite(sigma) || sigma <= 0) {
+        sigma <- 1
+      }
+
+      Z <- make_RFF(X = train_cl, D = D_RFF, sigma = sigma)
+
+      sv <- svd(Z)
+
+      vals <- sv$d^2
+      keep <- vals > 1e-10
+
+      vals <- vals[keep]
+      U <- sv$u[, keep, drop = FALSE]
+
+      eig <- list(values = vals, vectors = U)
+
+      r_eff <- sum(eig$values > 1e-10)
+
+      if (r_eff <= 0L) {
+        sampled_local <- sample.int(n_cl, 1L)
+      } else {
+        if (k_cl > r_eff) {
+          k_cl <- r_eff
+        }
+
+        sampled_local <- sample_DPP(eig, method = sample_method, k = k_cl)
+      }
+    }
+
+    sampled_global <- idx_cl[sampled_local]
+
+    all_ids <- c(all_ids, sampled_global)
+    class_ids[[as.character(cl)]] <- sampled_global
+  }
+
+  if (output == "vector") {
+    unique(all_ids)
+  } else {
+    class_ids
+  }
+}
+
