@@ -1,5 +1,4 @@
-
-NN_MADD_classsifier<- function(
+NN_MADD_classifier<- function(
                     trainX, trainY,
                     testX, testY = NULL,
                     use_reference = TRUE,
@@ -28,9 +27,15 @@ NN_MADD_classsifier<- function(
   n <- nrow(trainX)
   d <- ncol(trainX)
 
-  if (is.null(Dtrain) && (memory.eff == "NO" || do_cv)) {
-    Dtrain <- Rfast::Dist(trainX)
-  }
+  class_sizes <- table(trainY)
+
+  exact_dpp_needed <- use_reference    &&  is.null(reference.ind) &&
+                      !isTRUE(use_RFF) &&  !any(class_sizes > n_tol_dpp)
+
+if (is.null(Dtrain) &&
+    (memory.eff == "NO" || do_cv || exact_dpp_needed)) {
+  Dtrain <- Rfast::Dist(trainX)
+}
 
   # --------------------------------------------------
   # Use full training sample as reference set
@@ -38,7 +43,7 @@ NN_MADD_classsifier<- function(
   if (!use_reference) {
 
     return(
-      predict_madd_knn(
+      nn_madd(
         trainX = trainX,
         trainY = trainY,
         testX = testX,
@@ -151,7 +156,7 @@ NN_MADD_classsifier<- function(
     )
   }
 
-  out <- predict_madd_knn(
+  out <- nn_madd(
     trainX = trainX,
     trainY = trainY,
     testX = testX,
@@ -165,7 +170,7 @@ NN_MADD_classsifier<- function(
 
   out$reference.ind <- reference.ind
 
-  if (do_cv && exists("cv_result")) {
+  if (do_cv && exists("cv_result", inherits = FALSE)) {
     out$cv.result <- cv_result
     out$selected.reference_k <- reference_k
   }
