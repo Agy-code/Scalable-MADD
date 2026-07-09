@@ -24,19 +24,20 @@ do_cv: Whether cross-validation (CV) is to be used or not. TRUE implies CV is to
 
 reference_k_choices: If do_cv= TRUE, then the range of reference sizes based on which CV is performed.
 
-Dtrain = Distance matrix of the training data points.
+Dtrain: Distance matrix of the training data points.
 
-memory.eff = Indicates whether the user wants to use the memory-efficient approach, which avoids storing the entire distance matrix for the training data points. This is comparatively slower. The default is "NO".
+memory.eff: Indicates whether the user wants to use the memory-efficient approach, which avoids storing the entire distance matrix for the training data points. This is comparatively slower. The default is "NO".
 
-n_tol_dpp = If the sample size of any classes crosses n_tol_dpp, it uses the RFF version of k-DPP. The default choice is 2000.
+n_tol_dpp: If the sample size of any class crosses n_tol_dpp, it uses the RFF version of k-DPP. The default choice is 2000.
 
-use_RFF = If the user wants to forcefully use the RFF approximation.
+use_RFF: If the user wants to forcefully use the RFF approximation.
 
-D_RFF = Value of D used for RFF, default is 500.
+D_RFF: Value of D used for RFF, default is 500.
 
-dpp_method = "kDPP"
+dpp_method: "kDPP"
 
-cv_sample_method = "Deterministic"
+cv_sample_method: "Deterministic"
 
-return_MADD = If the user wants to print the MADD matrix, then return_MADD = TRUE. The default is FALSE.
+return_MADD: If the user wants to print the MADD matrix, then return_MADD = TRUE. The default is FALSE.
+
                                 
